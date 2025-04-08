@@ -1,18 +1,39 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreatePokemonDto } from './dto/create-pokemon.dto';
 import { UpdatePokemonDto } from './dto/update-pokemon.dto';
 import { PaginationDto } from 'src/shared/dtos/pagination.dto';
 import { PokeapiResponse } from './interfaces/pokeapi.response';
 import { Pokemon } from './entities/pokemon.entity';
 import { PokeapiPokemonResponse } from './interfaces/pokeapi-pokemon.response';
-import { promisify } from 'util';
 
 @Injectable()
 export class PokemonsService {
   paginatedPokemonCache = new Map<string, Pokemon[]>();
+  pokemonCache = new Map<number, Pokemon>();
 
   create(createPokemonDto: CreatePokemonDto) {
-    return Promise.resolve(`This action adds a ${createPokemonDto.name}`);
+    const pokemon: Pokemon = {
+      ...createPokemonDto,
+      id: new Date().getTime(),
+      hp: createPokemonDto.hp ?? 0,
+      sprites: createPokemonDto.sprites ?? [],
+    };
+
+    this.pokemonCache.forEach((storedPokemon) => {
+      if (pokemon.name === storedPokemon.name) {
+        throw new BadRequestException(
+          `Pokemon with name ${pokemon.name} already exists`,
+        );
+      }
+    });
+
+    this.pokemonCache.set(pokemon.id, pokemon);
+
+    return Promise.resolve(pokemon);
   }
 
   async findAll(paginationDto: PaginationDto): Promise<Pokemon[]> {
@@ -37,16 +58,30 @@ export class PokemonsService {
     return pokemons;
   }
 
-  findOne(id: number) {
-    return this.getpPokemonInformation(id);
+  async findOne(id: number) {
+    if (this.pokemonCache.has(id)) {
+      return this.pokemonCache.get(id);
+    }
+    const pokemon = await this.getpPokemonInformation(id);
+    this.pokemonCache.set(id, pokemon);
+    return pokemon;
   }
 
-  update(id: number, updatePokemonDto: UpdatePokemonDto) {
-    return Promise.resolve(`This action updates a #${id} pokemon`);
+  async update(id: number, updatePokemonDto: UpdatePokemonDto) {
+    const pokemon = await this.findOne(id);
+
+    const updatedPokemon = {
+      ...pokemon,
+      ...updatePokemonDto,
+    };
+
+    return Promise.resolve(updatedPokemon);
   }
 
-  remove(id: number) {
-    return Promise.resolve(`This action removes a #${id} pokemon`);
+  async remove(id: number) {
+    const pokemon = await this.findOne(id);
+    this.pokemonCache.delete(id);
+    return Promise.resolve(`This action removes a #${pokemon?.name} pokemon`);
   }
 
   private async getpPokemonInformation(id: number): Promise<Pokemon> {
